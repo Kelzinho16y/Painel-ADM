@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Upload e Gestão de APKs</title>
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Admin - Upload e Gestão de APKs</h1>
+        
+        <!-- Seleção e upload do APK -->
+        <input type="file" id="apkFile" accept=".apk" hidden onchange="showFileName()" />
+        <button onclick="document.getElementById('apkFile').click()">Selecionar APK</button>
+        <p id="fileName">Nenhum arquivo selecionado</p>
+        <button id="uploadButton" onclick="uploadAPK()">Enviar APK</button>
+
+        <!-- Lista de versões enviadas -->
+        <h2>Versões Enviadas</h2>
+        <ul id="versionList"></ul>
+    </div>
+
+    <!-- Firebase SDKs como módulos -->
+    <script type="module">
+        // Importa os módulos do Firebase
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js';
+        import { getFirestore, collection, addDoc, query, orderBy, getDocs } from 'https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore.js';
+        import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/9.0.0/firebase-storage.js';
+
+        // Configuração do Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDMv75sz_Kq3xjAOfn_ViFbc4RE2-JoQfo",
+            authDomain: "web-mine-app-store.firebaseapp.com",
+            projectId: "web-mine-app-store",
+            storageBucket: "web-mine-app-store.appspot.com",
+            messagingSenderId: "166292759038",
+            appId: "1:166292759038:web:4dffd61cd3fe1cdcc1a0af",
+            measurementId: "G-DWEQPHZ2R6"
+        };
+
+        // Inicialize o Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const storage = getStorage(app);
+
+        // As funções showFileName e uploadAPK precisam ser acessíveis globalmente
+        window.showFileName = function() {
+            const fileInput = document.getElementById('apkFile');
+            const fileNameDisplay = document.getElementById('fileName');
+            fileNameDisplay.textContent = fileInput.files[0] ? fileInput.files[0].name : 'Nenhum arquivo selecionado';
+        };
+
+        window.uploadAPK = async function() {
+            const fileInput = document.getElementById('apkFile');
+            const file = fileInput.files[0];
+
+            if (!file || !file.name.endsWith('.apk')) {
+                alert("Por favor, selecione um arquivo APK válido.");
+                return;
+            }
+
+            const uploadButton = document.getElementById('uploadButton');
+            uploadButton.textContent = "Enviando...";
+            uploadButton.disabled = true;
+
+            const fileName = file.name.replace('.apk', '.ap'); // Renomeia para .ap
+            const storageRef = ref(storage, `apks/${fileName}`);
+
+            console.log("Iniciando upload do arquivo:", fileName);
+
+            try {
+                // Enviar o arquivo
+                const snapshot = await uploadBytes(storageRef, file);
+                console.log("Upload concluído com sucesso:", snapshot);
+
+                const downloadUrl = await getDownloadURL(storageRef);
+                console.log("URL de download obtida:", downloadUrl);
+
+                // Salvar dados no Firestore
+                await addDoc(collection(db, "versions"), {
+                    version: fileName.replace('.ap', ''), // Use o nome sem a extensão .ap
+                    description: "Nova versão carregada pelo admin",
+                    downloadUrl: downloadUrl
+                });
+
+                alert("APK enviado com sucesso!");
+                fileInput.value = "";
+                document.getElementById('fileName').textContent = "Nenhum arquivo selecionado";
+                loadVersions();
+
+            } catch (error) {
+                console.error("Erro ao enviar o APK:", error);
+                alert("Falha ao enviar o APK: " + error.message);
+            } finally {
+                uploadButton.textContent = "Enviar APK";
+                uploadButton.disabled = false;
+            }
+        };
+
+        async function loadVersions() {
+            const versionList = document.getElementById('versionList');
+            versionList.innerHTML = '';
+
+            try {
+                console.log("Tentando carregar versões do Firestore...");
+
+                const snapshot = await getDocs(query(collection(db, 'versions'), orderBy('version')));
+                console.log("Número de documentos retornados:", snapshot.docs.length);
+
+                snapshot.forEach((doc) => {
+                    const versionData = doc.data();
+                    const listItem = document.createElement('li');
+                    listItem.className = 'version-item';
+                    listItem.innerHTML = `
+                        <strong>Versão:</strong> ${versionData.version} - 
+                        <a href="${versionData.downloadUrl}" target="_blank">Download</a>
+                    `;
+                    versionList.appendChild(listItem);
+                });
+            } catch (error) {
+                console.error("Erro ao carregar as versões:", error);
+            }
+        }
+
+        // Carrega as versões ao iniciar
+        loadVersions();
+    </script>
+</body>
+</html>
